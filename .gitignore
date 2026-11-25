@@ -1,0 +1,10 @@
+# your own cart list and run output stay on your computer
+carts.json
+monitor.log
+events.jsonl
+.env
+
+__pycache__/
+*.pyc
+.DS_Store
+.venv/

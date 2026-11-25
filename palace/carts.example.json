@@ -1,0 +1,24 @@
+{
+  "drop_time": "11:00",
+  "collections": ["all"],
+  "wait_seconds": 15,
+  "browser": "Google Chrome",
+  "carts": [
+    {
+      "name": "Cart 1",
+      "items": [
+        { "title": "FROLIC KNIT BLACK", "sizes": ["L"] },
+        { "title": "POLARTEC 200 RUGBY CREW ULTIMATE GREY", "sizes": ["L"] }
+      ]
+    },
+    {
+      "name": "Cart 2",
+      "items": [
+        { "title": "DR PALACE T-SHIRT GREY MARL", "sizes": ["L"] },
+        { "title": "FROLIC NEIN CUFF BEANIE CHILL PINK" },
+        { "title": "FROLIC NEIN CUFF BEANIE WHITE" },
+        { "title": "BASICALLY A TECH DECK BLACK" }
+      ]
+    }
+  ]
+}
