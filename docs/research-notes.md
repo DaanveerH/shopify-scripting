@@ -76,6 +76,18 @@ These came up repeatedly in what we read. They are how commercial bots win, and 
 
 If you are looking for those, this is the wrong project.
 
+## What a real Palace US checkout showed (27 November 2026)
+
+A person recorded their browser's network traffic (a HAR file) while buying on Palace US just after a drop. The recording itself is not in this repo: it holds their cookies and order details. What it taught us:
+
+| Seen | What we did |
+|---|---|
+| Collection data comes 30 products a page, with `pageInfo.hasNextPage` and an `endCursor`. The next page is the same route with `?direction=next&cursor=…`. The monitor read only page 1 and missed a live item for 20 minutes. | The monitor now follows the pages, one request per poll interval, up to `max_pages` (default 5), and watches `new` instead of `all` by default. |
+| The checkout link (`/cart/c/<token>?key=…`) first redirected to `/checkpoint`, an hCaptcha page. The person solved it, then went on to Shop Pay. | Documented. The person solves it; nothing here will. |
+| A second checkout in the same browser 3 minutes later skipped the checkpoint. | Documented, with the caveat that we saw it once. |
+| The checkout link went to Shop Pay on its own, without `payment=shop_pay`. | The `shop_pay` option stays off by default; it may not be needed. |
+| The site's own Add to Cart now posts JSON to `/api/cart`: `{"lines": [{"merchandiseId": "gid://shopify/ProductVariant/…", "quantity": 1}]}`, and gets `200` with the cart (including its checkout link) back. The monitor still sends the form post (`intent=add`). | Not changed: the form post still built a cart on Palace US on 27 November (one in-stock item, `--test-cart`, nothing opened or paid). If it ever stops working, the JSON body is the fallback. |
+
 ## Ideas for later that fit the rules
 
 - **Make `honest` the default** once it has passed on a live Palace drop.

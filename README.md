@@ -55,8 +55,8 @@ Why by name and not by link?
 The same thing as code, for Palace:
 
 ```python
-# 1. the feed: same request the site makes when you click "shop all"
-raw = GET("https://usa.palaceskateboards.com/collections/all.data")
+# 1. the feed: same request the site makes when you click "New"
+raw = GET("https://usa.palaceskateboards.com/collections/new.data")   # 30 a page; ?direction=next&cursor=... for more
 products = decode(raw)   # React Router "single fetch": flat JSON array, objects reference each other by index
 
 # 2. keyword match on title, then size -> variant
@@ -226,6 +226,9 @@ Tested and worked:
 - One item on Palace US with normal stock (20 Nov 2026).
 - A normal Shopify store during a live drop (13 Nov 2026). Got to the Shop Pay page.
 - Several items and several carts, against the fake shop in this repo.
+- Reading every page of a Palace collection (27 Nov 2026). Before that, the script read only the first 30 products and missed a live item on page 4.
+
+Seen on Palace US (27 Nov 2026): the first checkout asks you to solve a captcha. You do that yourself. The script never will.
 
 Not tested yet:
 

@@ -1,6 +1,6 @@
 {
   "drop_time": "11:00",
-  "collections": ["all"],
+  "collections": ["new"],
   "wait_seconds": 15,
   "browser": "Google Chrome",
   "carts": [

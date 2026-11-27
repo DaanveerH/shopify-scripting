@@ -127,7 +127,8 @@ Write `palace/carts.json` (git-ignored; copy the shape from `palace/carts.exampl
 - `title`: every word must be in the product title, as whole words. Palace titles are upper case; matching ignores case and punctuation. Include the colour.
 - `sizes`: `XS, S, M, L, XL, XXL, 3XL` are translated to Palace's names (`Large`, `X-Large`, and so on). Leave it out for one-size items.
 - `drop_time`: local time of the drop on this computer. While the shop is closed, the script polls every 10 seconds until 3 minutes before this time, then at full speed.
-- `collections` (optional): which collection pages to read each poll. `all` always; add the product's category (`jackets`, `t-shirts`, `hats`, and so on).
+- `collections` (optional, default `["new"]`): which collections to read each poll. `new` holds the current drop; add the product's category (`knitwear`, `accessories`, `hats`, and so on) if you want. Do not use `all`: it is the whole shop (600+ products, sorted by category), and new items can be 20 pages deep.
+- `max_pages` (optional, default 5): pages of 30 products read per collection. The script waits one poll interval between pages, so each extra page adds 1.5 seconds to a check. If the log says a collection "has more than N page(s)", switch to a smaller collection rather than raising this a lot.
 - `wait_seconds` (optional, default 15): how long a cart waits for its remaining items after the first one appears.
 
 Then run:
@@ -142,7 +143,9 @@ What to know about Palace:
 
 - Product addresses are random 12-character handles, different in every region. You cannot know the address in advance. The script finds the product by title.
 - About an hour before a drop (sometimes days before a large one) the shop closes. Every page redirects to `/password` with a "re-opens at" message. The script logs `site: closed` and waits. This is normal.
-- New products have been published 2 to 3 minutes after the announced time, and once 13 minutes after. Do not restart the script at 11:00:30.
+- New products have been published 2 to 3 minutes after the announced time. One drop looked 13 minutes late, but until 27 November 2026 the script read only the first page of a collection, so that may have been an item on page 2. Do not restart the script at 11:00:30.
+- Collection pages hold 30 products. The next page is the same route with `?direction=next&cursor=<pageInfo.endCursor>`. The script follows `hasNextPage`.
+- Palace US checkout shows an hCaptcha "checkpoint" page the first time a browser opens a checkout (seen 27 November 2026). The person solves it. Never automate it. A second checkout in the same browser a few minutes later skipped it. A checkout link sent to someone else will show it to them.
 - Shopify's public Storefront API for the shop cannot see collaboration products and cannot add them to a cart. Only the site's own routes work. Do not waste time on the API.
 - Items that are sold out in the wanted sizes are left out of the cart and named in the log. If the whole cart fails three times, the script opens the product pages instead so the person can act by hand.
 - A cart built by the script is separate from the browser's own cart. The person can also add to cart by hand as a backup without breaking anything.
@@ -218,5 +221,7 @@ Verify it with the test in path A or B: the checkout link should land on a `shop
 - **20 November 2026, Palace US:** detection and the cart route worked on regular stock before the shop closed for the drop. The closed state was detected correctly.
 
 - **Several items per cart and several carts (Palace):** verified against the pretend shop in `palace/fake_shop.py` by the tests in `tests/`.
+- **27 November 2026, Palace US, after the drop:** reading every page of `new` found a live item on page 4 that the first-page-only version had missed for 20 minutes. Read only; the script built no cart.
+- **27 November 2026, Palace US, a person's own browser (recorded page traffic):** first checkout hit the hCaptcha checkpoint, then Shop Pay; a second checkout 3 minutes later went straight to Shop Pay. The checkout link reached Shop Pay without the `shop_pay` hint.
 
-Not verified yet: several items per cart on a live Palace drop, two open checkouts in one browser, a full Palace US checkout on a collaboration product, Palace regions other than US and UK, any operating system other than macOS, and behaviour under a checkout queue or captcha.
+Not verified yet: several items per cart on a live Palace drop, two open checkouts in one browser, a full Palace US checkout on a collaboration product, Palace regions other than US and UK, any operating system other than macOS, and behaviour under a checkout queue.

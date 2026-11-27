@@ -31,11 +31,13 @@ stateDiagram-v2
 | Listed | Your items have pages. | Picks your size. Builds the cart. |
 | Unlocked | Checkout takes orders. | Opens checkout in your browser. |
 
-Three things to know:
+Things to know:
 
 - **Product links are random.** Nobody knows them before the drop. The script finds items by **name**.
-- **New items can be late.** Usually 2 to 3 minutes after drop time. Once it was 13 minutes. Do not restart the script. Let it run.
+- **Shop pages show 30 products at a time.** The script reads every page of a collection, up to 5. It watches **New** by default. New is about 4 pages on drop day. **All** is the whole shop: more than 600 products, sorted by category. A new item can be 20 pages deep there.
+- **New items can be late.** Usually 2 to 3 minutes after drop time. One drop looked 13 minutes late. On 27 Nov 2026 we found the script only read the first page, so that delay may really have been the item sitting on page 2. Do not restart the script. Let it run.
 - **The script uses the shop's own pages.** Shopify's public API cannot see collab items. So the script sends the same requests the website sends.
+- **Checkout asks "are you human" the first time.** Palace US shows a captcha page (hCaptcha) the first time a browser opens a checkout. You solve it. It took about 20 seconds on 27 Nov 2026. A second checkout in the same browser 3 minutes later did not ask again. A checkout link you send to a friend will ask them too.
 
 ## what the script does
 
@@ -68,7 +70,7 @@ sequenceDiagram
 
 | Step | Request | Notes |
 |---|---|---|
-| Detect | `GET /collections/<name>.data` | React Router "single fetch" data. A flat JSON array where objects point to other entries by index. `decode_route_data()` rebuilds it. When the shop is closed, the answer is a redirect to `/password`. |
+| Detect | `GET /collections/<name>.data`, then `?direction=next&cursor=<endCursor>` while `pageInfo.hasNextPage` | React Router "single fetch" data. A flat JSON array where objects point to other entries by index. `decode_route_data()` rebuilds it. 30 products per page. One request per poll interval, also between pages. When the shop is closed, the answer is a redirect to `/password`. |
 | Cart | `POST /api/cart` with `intent=add`, `merchandiseId`, `quantity=1` | The same request the Add to Cart button sends. One cookie jar per cart. One request per item. Success is a `303` and a `cart` cookie. |
 | Read back | `GET /cart.data` with the same cookies | Gives `totalQuantity`, `checkoutUrl` and the total. The script compares the item IDs in the cart with what it sent. The shop accepts an add for a sold-out size and then drops it. |
 | Gate | `GET <checkout host>/password` | `200` while locked. A redirect when open. |
@@ -146,7 +148,8 @@ For the whole file:
 | Field | Default | What it is |
 |---|---|---|
 | `drop_time` | `"11:00"` | Drop time on **your computer's clock**. 24-hour. |
-| `collections` | `["all"]` | Which shop pages to read. You can add a category, for example `"jackets"`. |
+| `collections` | `["new"]` | Which shop pages to read. You can add a category, for example `"knitwear"` or `"accessories"`. Avoid `"all"`: it is too big to read in full. |
+| `max_pages` | `5` | Pages of 30 products to read per collection. More pages means slower checks: one page per 1.5 seconds. |
 | `wait_seconds` | `15` | How long a cart waits for its other items. |
 | `browser` | `"Google Chrome"` | The browser to open checkout in (Mac only). A cart can set its own. |
 | `open_missing` | `false` | Also open the page of each item that was left out. |
@@ -201,7 +204,8 @@ python3 palace_monitor.py --match "frolic,knit,black" --size L,XL
 | `--match WORDS` | | One item: words that must all be in the title |
 | `--size L,XL` | | One item: your sizes, best first |
 | `--exclude WORDS` | | One item: skip titles with these words |
-| `--collections all,jackets` | `all` | Shop pages to read |
+| `--collections new,knitwear` | `new` | Shop pages to read |
+| `--max-pages N` | `5` | Pages of 30 products to read per collection |
 | `--drop HH:MM` | `11:00` | Drop time on your clock |
 | `--wait SECONDS` | `15` | How long a cart waits for its other items |
 | `--interval SECONDS` | `1.5` | Time between checks. Minimum 1. |
@@ -262,7 +266,7 @@ Its instructions are in the [drop-setup skill](../skills/drop-setup/SKILL.md).
 - [ ] Start the real run in a terminal you can see. **One copy only.**
 - [ ] Keep the computer awake.
 - [ ] Checkout opens: check item, size, total, address. Press Pay.
-- [ ] A queue or captcha at checkout is the store's. Wait, or clear it yourself.
+- [ ] Expect a captcha page the first time checkout opens. Solve it yourself. A queue is the store's too. Wait it out.
 
 The script stops by itself when every cart is opened or has nothing left to try.
 
@@ -287,6 +291,7 @@ Everything on screen is also saved in `monitor.log`.
 |---|---|---|
 | `site: closed` long after drop time | The shop has not reopened | Wait. Check Palace's own channels for a delay. |
 | `not in the shop yet` for one item, others are live | The name in your file is wrong | Compare with the suggested names. Fix `carts.json`. Restart. |
+| `note: "all" has more than 5 page(s) of products` | The collection is too big to read in full. Items past page 5 are missed. | Use `new` or the item's category in `collections`. Restart. |
 | `cart failed (try 1 of 3)` | The shop refused or timed out | It tries again. After 3 tries it opens the product pages for you. |
 | `not in the cart: … (refused)` | The shop took the add, then dropped the item. Usually sold out. | Use the link in the log to try by hand. |
 | Checkout shows a password page or the home page | Checkout opened while the shop was still locked | Open the link again after the shop reopens. |
@@ -301,16 +306,23 @@ Worked:
 - **20 Nov 2026, Palace US.** Found items and built a cart with normal stock. Saw the closed shop correctly.
 - **Several items and several carts.** Against the fake shop in this folder. Run `python3 -m unittest discover -s ../tests`.
 - **Honest name (`--user-agent honest`).** Palace US gives the same answer as for a browser name while the shop is closed.
+- **27 Nov 2026, Palace US, reading every page.** Found a live item on page 4 of New that the old first-page-only script never saw. Read only. No cart was built by the script.
+
+Seen in a person's own browser on 27 Nov 2026, Palace US (from a recording of the page traffic):
+
+- The first checkout went to a captcha page (hCaptcha) before Shop Pay. The person solved it in about 20 seconds.
+- A second checkout 3 minutes later, same browser, went straight to Shop Pay.
+- The checkout link went to Shop Pay by itself, without the `shop_pay` hint.
 
 Not tested yet:
 
 - Honest name while the shop is open.
-- The Shop Pay hint (`shop_pay`) on a Palace checkout link.
+- The Shop Pay hint (`shop_pay`) on a Palace checkout link. It may not be needed: see above.
 - Several items in one cart on a live Palace drop.
 - Two checkouts open in one browser with Shop Pay.
 - Regions other than US and UK.
 - Windows and Linux.
-- A checkout queue or captcha.
+- A checkout queue.
 
 ## files here
 
