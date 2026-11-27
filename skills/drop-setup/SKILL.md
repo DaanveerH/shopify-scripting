@@ -84,7 +84,8 @@ Tell the person:
 
 - Start it in a terminal they can see, 10 to 30 minutes early, one copy only.
 - Keep the computer awake and the Shop Pay browser open.
-- `site: closed` before the drop is normal. New products have appeared up to 13 minutes late.
+- `site: closed` before the drop is normal. New products usually appear 2 to 3 minutes after drop time.
+- The first checkout on Palace US shows a captcha page. They solve it themselves. A checkout link sent to a friend will show the friend one too.
 - When a checkout opens: check item, size, total and address, then press Pay.
 - Items that sold out in their sizes are left out and named in the log.
 

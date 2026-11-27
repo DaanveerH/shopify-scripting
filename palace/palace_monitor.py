@@ -14,7 +14,8 @@ Two ways to say what you want:
       python3 palace_monitor.py --carts carts.json
 
 How it works (all through the shop's own front end):
-  detect - GET /collections/<name>.data, the data the collection page renders from.
+  detect - GET /collections/<name>.data, the data the collection page renders from, 30 products
+           a page, following ?direction=next&cursor=... to the next page.
            While the shop is closed before a drop this answers with a redirect to /password.
   cart   - the same POST /api/cart the Add to Cart button sends, once per item with one
            cookie jar per cart, then GET /cart.data to read back the cart's checkout link.
@@ -168,8 +169,31 @@ def site_get(path, opener=None, timeout=6):
     return data
 
 
-def site_feed(collection):
-    """Every product on one collection page, as plain dicts."""
+def page_info(data):
+    """The pageInfo of a collection payload's product list, or {} if there is none."""
+    def walk(o):
+        if isinstance(o, dict):
+            if isinstance(o.get("pageInfo"), dict) and ("edges" in o or "nodes" in o):
+                return o["pageInfo"]
+            o = list(o.values())
+        if isinstance(o, list):
+            for v in o:
+                found = walk(v)
+                if found is not None:
+                    return found
+        return None
+
+    return walk(data) or {}
+
+
+def site_feed(collection, max_pages=1, pause=0.0):
+    """Every product in one collection, as plain dicts. Returns (products, pages_left_unread).
+
+    A collection page holds 30 products. The rest come from the same route with
+    ?direction=next&cursor=<endCursor>, which is what the site's own "next page" sends.
+    It reads up to max_pages pages and waits `pause` seconds between them, so a sweep
+    sends no more than one request per poll interval.
+    """
     found = []
 
     def walk(o):
@@ -185,8 +209,18 @@ def site_feed(collection):
             for v in o:
                 walk(v)
 
-    walk(site_get(f"/collections/{collection}.data"))
-    return found
+    cursor = None
+    for page in range(max(1, max_pages)):
+        if page:
+            time.sleep(pause)
+        query = "?" + urllib.parse.urlencode({"direction": "next", "cursor": cursor}) if cursor else ""
+        data = site_get(f"/collections/{collection}.data{query}")
+        walk(data)
+        info = page_info(data)
+        if not info.get("hasNextPage") or not info.get("endCursor"):
+            return found, False
+        cursor = info["endCursor"]
+    return found, True
 
 
 def checkout_locked():
@@ -343,7 +377,7 @@ def load_plan(args):
                 seen[key] = c["name"]
         plan = {"carts": carts, "open_missing": bool(raw.get("open_missing", False)),
                 "shop_pay": bool(args.shop_pay or raw.get("shop_pay", False))}
-        for key, flag in (("drop_time", "drop"), ("collections", "collections"),
+        for key, flag in (("drop_time", "drop"), ("collections", "collections"), ("max_pages", "max_pages"),
                           ("wait_seconds", "wait"), ("browser", "browser")):
             if getattr(args, flag) is None and raw.get(key) is not None:
                 setattr(args, flag, raw[key])
@@ -357,7 +391,10 @@ def load_plan(args):
                 "shop_pay": bool(args.shop_pay)}
 
     args.drop = args.drop or "11:00"
-    args.collections = as_list(args.collections) or ["all"]
+    # "new" holds the current drop. "all" is the whole shop (600+ products, sorted by
+    # category), so new items can sit many pages deep in it.
+    args.collections = as_list(args.collections) or ["new"]
+    args.max_pages = max(1, int(args.max_pages if args.max_pages is not None else 5))
     args.wait = float(args.wait if args.wait is not None else 15)
     args.browser = args.browser or "Google Chrome"
     for c in plan["carts"]:
@@ -527,7 +564,9 @@ def main():
     ap.add_argument("--match", default="", help="single item: every word must be in the title, e.g. frolic,knit,black")
     ap.add_argument("--exclude", default="", help="single item: skip titles containing any of these words")
     ap.add_argument("--size", default="", help="single item: sizes, best first, e.g. L,XL (not needed for one-size items)")
-    ap.add_argument("--collections", default=None, help="collection pages to read each poll, e.g. all,jackets (default all)")
+    ap.add_argument("--collections", default=None, help="collections to read each poll, e.g. new,knitwear (default new)")
+    ap.add_argument("--max-pages", type=int, default=None,
+                    help="pages of 30 products to read per collection each poll (default 5)")
     ap.add_argument("--interval", type=float, default=1.5, help="seconds between polls (minimum 1)")
     ap.add_argument("--drop", default=None, help="local drop time HH:MM (default 11:00); polls slowly until 3 min before it")
     ap.add_argument("--wait", type=float, default=None,
@@ -561,7 +600,7 @@ def main():
     emit("monitor_started", site=SITE, dry_run=args.dry_run,
          carts=[{"name": c["name"], "items": [it["title"] for it in c["items"]]} for c in carts])
 
-    tick, delay, site_state, open_polls = 0, args.interval, None, 0
+    tick, delay, site_state, open_polls, cut_short = 0, args.interval, None, 0, set()
     hh, mm = (int(x) for x in args.drop.split(":"))
     drop_at = time.mktime(time.localtime()[:3] + (hh, mm, 0, 0, 0, -1))
 
@@ -570,8 +609,13 @@ def main():
         products, ok = {}, []
         for c in args.collections:
             try:
-                for p in site_feed(c):
+                feed, more = site_feed(c, args.max_pages, delay)
+                for p in feed:
                     products.setdefault(p["id"], p)
+                if more and c not in cut_short:
+                    cut_short.add(c)
+                    log(f"note: \"{c}\" has more than {args.max_pages} page(s) of products. Items after page "
+                        f"{args.max_pages} are not seen. Use \"new\" or the item's category, or raise --max-pages.")
                 ok.append(c)
                 state, delay = "OPEN", args.interval
             except Closed as e:

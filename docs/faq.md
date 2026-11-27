@@ -9,8 +9,8 @@ It automates the clicking before checkout: finding the product, choosing your si
 The store's own product list has an ID next to every size. The script finds your item by name, picks your size, and sends that ID to the cart. Here it is for Palace:
 
 ```python
-# 1. the feed: same request the site makes when you click "shop all"
-raw = GET("https://usa.palaceskateboards.com/collections/all.data")
+# 1. the feed: same request the site makes when you click "New"
+raw = GET("https://usa.palaceskateboards.com/collections/new.data")   # 30 a page; ?direction=next&cursor=... for more
 products = decode(raw)   # React Router "single fetch": flat JSON array, objects reference each other by index
 
 # 2. keyword match on title, then size -> variant

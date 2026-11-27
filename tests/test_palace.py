@@ -127,6 +127,20 @@ class EndToEnd(unittest.TestCase):
         second_built = next(i for i, l in enumerate(lines) if "[Cart 2] cart built" in l)
         self.assertLess(first_done, second_built)
 
+    def test_items_on_later_pages_are_found(self):
+        # 10 products, 4 to a page: the Tech Deck is on page 3. Reading only page 1 is what
+        # missed a live item on Palace US on 27 Nov 2026.
+        events, _ = self.run_monitor(0, ["--match", "tech,deck"])
+        self.assertEqual([e["items"] for e in events if e["type"] == "cart_built"], [["BASICALLY A TECH DECK BLACK"]])
+        pages = [p for p in self.shop.paths if p.startswith("/collections/new.data")]
+        self.assertIn("/collections/new.data?direction=next&cursor=8", pages)
+
+    def test_page_limit_is_kept_and_reported(self):
+        events, out = self.run_monitor(0, ["--match", "tech,deck", "--max-pages", "1", "--once"])
+        self.assertFalse([e for e in events if e["type"] == "cart_built"])
+        self.assertFalse([p for p in self.shop.paths if "cursor=" in p])
+        self.assertIn('"new" has more than 1 page(s)', out)
+
     def test_default_identity_is_unchanged(self):
         self.run_monitor(0, ["--match", "tech,deck"])
         self.assertEqual({h.get("User-Agent") for h in self.shop.seen_headers}, {pm.BROWSER_UA})

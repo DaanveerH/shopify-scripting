@@ -3,7 +3,9 @@
 
 It answers the same four routes the monitor uses, in the same data format:
 
-  GET  /collections/<name>.data   product list (a redirect to /password while "closed")
+  GET  /collections/<name>.data   product list, a few per page like the real shop's 30
+                                  (?direction=next&cursor=N for the next page;
+                                  a redirect to /password while "closed")
   POST /api/cart                  add one item to a cart, tracked by a `cart` cookie
   GET  /cart.data                 the cart, with its checkout link
   GET  /password                  200 while checkout is "locked", a redirect once open
@@ -82,11 +84,13 @@ def encode_route_data(obj):
 
 
 class Shop:
-    def __init__(self, closed_for=0.0, locked_for=0.0):
+    def __init__(self, closed_for=0.0, locked_for=0.0, page_size=4):
         self.started = time.time()
         self.closed_for = closed_for      # seconds the shop stays "closed" after start
         self.locked_for = locked_for      # extra seconds the checkout stays locked after opening
+        self.page_size = page_size        # the real shop uses 30; a small page keeps paging in every test
         self.products = build_products()
+        self.paths = []                   # the path of every request, for tests
         self.carts = {}
         self.lock = threading.Lock()
         self.seen_headers = []            # the headers of every request, for tests
@@ -126,7 +130,9 @@ def make_handler(shop, base_url):
 
         def do_GET(self):
             shop.seen_headers.append(dict(self.headers))
-            path = urllib.parse.urlparse(self.path).path
+            shop.paths.append(self.path)
+            url = urllib.parse.urlparse(self.path)
+            path, query = url.path, urllib.parse.parse_qs(url.query)
             if path == "/password":
                 if shop.checkout_locked():
                     return self.send(200, "<h1>Web shop re-opens soon (demo)</h1>", "text/html")
@@ -134,9 +140,15 @@ def make_handler(shop, base_url):
             if path.startswith("/collections/") and path.endswith(".data"):
                 if shop.closed():
                     return self.send(200, encode_route_data(["SingleFetchRedirect", {"redirect": "/password"}]))
+                # Same shape as the real shop: edges of nodes, plus pageInfo with an opaque cursor.
+                start = int((query.get("cursor") or ["0"])[0]) if query.get("direction") == ["next"] else 0
+                end = start + shop.page_size
+                page = {"edges": [{"node": p} for p in shop.products[start:end]],
+                        "pageInfo": {"hasPreviousPage": start > 0, "hasNextPage": end < len(shop.products),
+                                     "startCursor": str(start), "endCursor": str(end)}}
                 return self.send(200, encode_route_data(
                     {"root": {"data": {"shop": "demo"}},
-                     "routes/collections.$handle": {"data": {"products": {"nodes": shop.products}}}}))
+                     "routes/($locale).collections.$handle": {"data": {"collection": {"products": page}}}}))
             if path == "/cart.data":
                 lines = shop.carts.get(self.cart_id(), [])
                 cart = None
@@ -160,6 +172,7 @@ def make_handler(shop, base_url):
 
         def do_POST(self):
             shop.seen_headers.append(dict(self.headers))
+            shop.paths.append(self.path)
             if urllib.parse.urlparse(self.path).path != "/api/cart":
                 return self.send(404, "not found", "text/plain")
             length = int(self.headers.get("Content-Length") or 0)
@@ -180,9 +193,9 @@ def make_handler(shop, base_url):
     return Handler
 
 
-def start(port=0, closed_for=0.0, locked_for=0.0):
+def start(port=0, closed_for=0.0, locked_for=0.0, page_size=4):
     """Start the shop on a background thread. Returns (server, base_url, shop)."""
-    shop = Shop(closed_for, locked_for)
+    shop = Shop(closed_for, locked_for, page_size)
     server = ThreadingHTTPServer(("127.0.0.1", port), None)
     base_url = f"http://127.0.0.1:{server.server_address[1]}"
     server.RequestHandlerClass = make_handler(shop, base_url)
